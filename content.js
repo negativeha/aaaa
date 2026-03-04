@@ -1,5 +1,6 @@
 (() => {
-  const processed = new WeakSet();
+  const MIN_SIZE = 80;
+  let activeImage = null;
 
   const sanitizeFileName = (name) =>
     name
@@ -8,32 +9,9 @@
       .trim()
       .slice(0, 80) || "aliexpress-photo";
 
-  const getHighResolutionUrl = (url) => {
+  const getDownloadableUrl = (url) => {
     if (!url) return null;
-
-    // Remove query string that sometimes contains thumbnail transformations.
     return url.split("?")[0];
-  };
-
-  const downloadImage = async (url, productName) => {
-    try {
-      const imageUrl = getHighResolutionUrl(url);
-      if (!imageUrl) return;
-
-      const extension = imageUrl.split(".").pop()?.split("#")[0] || "jpg";
-      const filename = `${sanitizeFileName(productName)}-${Date.now()}.${extension}`;
-
-      await chrome.runtime.sendMessage({
-        type: "DOWNLOAD_IMAGE",
-        payload: {
-          url: imageUrl,
-          filename,
-        },
-      });
-    } catch (error) {
-      console.error("Falha ao baixar imagem:", error);
-      window.open(url, "_blank", "noopener,noreferrer");
-    }
   };
 
   const getProductName = () => {
@@ -45,63 +23,103 @@
     return heading?.textContent?.trim() || "aliexpress-photo";
   };
 
-  const buildButton = (img) => {
-    const wrapper = document.createElement("div");
-    wrapper.className = "aepd-download-wrapper";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "aepd-floating-download-button";
+  button.textContent = "Baixar foto";
+  button.title = "Baixar imagem selecionada";
+  button.style.display = "none";
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "aepd-download-button";
-    button.textContent = "Baixar";
+  const positionButton = (img) => {
+    if (!img || !img.isConnected) {
+      button.style.display = "none";
+      activeImage = null;
+      return;
+    }
 
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
+    const rect = img.getBoundingClientRect();
+    if (rect.width < MIN_SIZE || rect.height < MIN_SIZE) {
+      button.style.display = "none";
+      return;
+    }
 
-      const src = img.currentSrc || img.src;
-      downloadImage(src, getProductName());
-    });
+    const top = Math.max(8, rect.top + 8);
+    const left = Math.max(8, rect.right - button.offsetWidth - 8);
 
-    wrapper.appendChild(button);
-    return wrapper;
+    button.style.top = `${top + window.scrollY}px`;
+    button.style.left = `${left + window.scrollX}px`;
+    button.style.display = "inline-flex";
+    activeImage = img;
   };
 
-  const injectButtons = () => {
-    const selectors = [
-      '[class*="image"] img',
-      '[class*="gallery"] img',
-      '[class*="sku"] img',
-      'img[src*="alicdn.com"]',
-    ];
+  const isAliExpressImage = (img) => {
+    const source = img.currentSrc || img.src || "";
+    return /alicdn\.com|aliexpress\./i.test(source);
+  };
 
-    const images = document.querySelectorAll(selectors.join(","));
+  const maybeActivateForTarget = (target) => {
+    const img = target?.closest?.("img");
+    if (!img) return;
+    if (!isAliExpressImage(img)) return;
+    if (!img.src && !img.currentSrc) return;
 
-    images.forEach((img) => {
-      if (processed.has(img)) return;
-      if (!img.src || img.width < 80 || img.height < 80) return;
+    positionButton(img);
+  };
 
-      const container = img.closest("li, div, figure") || img.parentElement;
-      if (!container || container.querySelector(":scope > .aepd-download-wrapper")) {
-        processed.add(img);
-        return;
+  button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!activeImage) return;
+
+    const rawUrl = activeImage.currentSrc || activeImage.src;
+    const url = getDownloadableUrl(rawUrl);
+    if (!url) return;
+
+    const extension = url.split(".").pop()?.split("#")[0] || "jpg";
+    const filename = `${sanitizeFileName(getProductName())}-${Date.now()}.${extension}`;
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "DOWNLOAD_IMAGE",
+        payload: { url, filename },
+      });
+
+      if (!response?.ok) {
+        console.error("Falha no download:", response?.error || "Erro desconhecido");
       }
-
-      container.style.position = container.style.position || "relative";
-      container.appendChild(buildButton(img));
-
-      processed.add(img);
-    });
-  };
-
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "AEPD_REFRESH") {
-      injectButtons();
-      sendResponse({ ok: true });
+    } catch (error) {
+      console.error("Falha ao baixar imagem:", error);
     }
   });
 
-  const observer = new MutationObserver(() => injectButtons());
-  observer.observe(document.body, { childList: true, subtree: true });
+  document.documentElement.appendChild(button);
 
-  injectButtons();
+  document.addEventListener(
+    "pointermove",
+    (event) => {
+      maybeActivateForTarget(event.target);
+    },
+    true
+  );
+
+  document.addEventListener(
+    "scroll",
+    () => {
+      if (activeImage) positionButton(activeImage);
+    },
+    true
+  );
+
+  window.addEventListener("resize", () => {
+    if (activeImage) positionButton(activeImage);
+  });
+
+  document.addEventListener(
+    "click",
+    (event) => {
+      maybeActivateForTarget(event.target);
+    },
+    true
+  );
 })();
