@@ -1,0 +1,29 @@
+.aepd-download-wrapper {
+  position: absolute;
+  inset: 8px 8px auto auto;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+li:hover > .aepd-download-wrapper,
+div:hover > .aepd-download-wrapper,
+figure:hover > .aepd-download-wrapper {
+  opacity: 1;
+}
+
+.aepd-download-button {
+  background: #ff4747;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+}
+
+.aepd-download-button:hover {
+  background: #e23939;
+}
