@@ -1,7 +1,11 @@
 (() => {
   const MIN_SIZE = 80;
+  const POPUP_MIN_SIDE = 220;
   const URL_PATTERN = /(alicdn\.com|aliexpress\.)/i;
+  const DISALLOWED_URL_KEYWORDS = ["cart", "icon", "sprite", "logo", "avatar", "coupon", "placeholder"];
+
   let activeMediaUrl = null;
+  let activeAnchorElement = null;
 
   const sanitizeFileName = (name) =>
     name
@@ -30,30 +34,37 @@
     return match?.[2] || null;
   };
 
-  const isLargeEnough = (element) => {
+  const isLargeEnough = (element, min = MIN_SIZE) => {
     const rect = element.getBoundingClientRect();
-    return rect.width >= MIN_SIZE && rect.height >= MIN_SIZE;
+    return rect.width >= min && rect.height >= min;
+  };
+
+  const hasValidExtension = (url) => /\.(jpe?g|png|webp|avif)(?:$|#)/i.test(url);
+
+  const hasDisallowedKeyword = (url) => {
+    const lower = url.toLowerCase();
+    return DISALLOWED_URL_KEYWORDS.some((word) => lower.includes(word));
   };
 
   const isDownloadable = (url) => {
     if (!url) return false;
-    return URL_PATTERN.test(url);
+    return URL_PATTERN.test(url) && hasValidExtension(url) && !hasDisallowedKeyword(url);
   };
 
-  const findMediaUrlFromPath = (path) => {
+  const findMediaFromPath = (path) => {
     for (const node of path) {
       if (!(node instanceof Element)) continue;
 
       if (node instanceof HTMLImageElement) {
         const source = normalizeUrl(node.currentSrc || node.src);
         if (source && isDownloadable(source) && isLargeEnough(node)) {
-          return source;
+          return { url: source, element: node };
         }
       }
 
       const bgUrl = normalizeUrl(parseBackgroundImageUrl(getComputedStyle(node).backgroundImage));
-      if (bgUrl && isDownloadable(bgUrl) && isLargeEnough(node)) {
-        return bgUrl;
+      if (bgUrl && isDownloadable(bgUrl) && isLargeEnough(node, 160)) {
+        return { url: bgUrl, element: node };
       }
     }
 
@@ -66,18 +77,19 @@
     document.querySelectorAll("img").forEach((img) => {
       const source = normalizeUrl(img.currentSrc || img.src);
       if (!isDownloadable(source)) return;
-      const rect = img.getBoundingClientRect();
-      const area = Math.max(0, rect.width) * Math.max(0, rect.height);
-      candidates.push({ url: source, score: area });
-    });
 
-    document.querySelectorAll("*").forEach((el) => {
-      const bgUrl = normalizeUrl(parseBackgroundImageUrl(getComputedStyle(el).backgroundImage));
-      if (!isDownloadable(bgUrl)) return;
-      const rect = el.getBoundingClientRect();
+      const rect = img.getBoundingClientRect();
+      if (rect.width < POPUP_MIN_SIDE || rect.height < POPUP_MIN_SIDE) return;
+
       const area = Math.max(0, rect.width) * Math.max(0, rect.height);
-      if (area < MIN_SIZE * MIN_SIZE) return;
-      candidates.push({ url: bgUrl, score: area });
+      const isInViewport = rect.bottom > 0 && rect.right > 0;
+      const yBias = rect.top < window.innerHeight * 0.8 ? 1.2 : 1;
+      const visibilityBias = isInViewport ? 1.1 : 1;
+
+      candidates.push({
+        url: source,
+        score: area * yBias * visibilityBias,
+      });
     });
 
     candidates.sort((a, b) => b.score - a.score);
@@ -85,7 +97,7 @@
   };
 
   const requestDownload = async (url) => {
-    if (!url) return { ok: false, error: "Nenhuma URL encontrada" };
+    if (!url) return { ok: false, error: "Nenhuma URL de foto do anúncio encontrada" };
 
     const extension = url.split(".").pop()?.split("#")[0] || "jpg";
     const filename = `${sanitizeFileName(getProductName())}-${Date.now()}.${extension}`;
@@ -109,15 +121,25 @@
   button.title = "Baixar imagem selecionada";
   button.style.display = "none";
 
-  const showButton = (clientX, clientY, mediaUrl) => {
-    activeMediaUrl = mediaUrl;
-    button.style.left = `${Math.max(8, clientX + 12)}px`;
-    button.style.top = `${Math.max(8, clientY + 12)}px`;
+  const positionButtonNearElement = (element) => {
+    const rect = element.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - 8, Math.max(8, rect.right - 8));
+    const top = Math.max(8, rect.top + 8);
+    button.style.left = `${left}px`;
+    button.style.top = `${top}px`;
+    button.style.transform = "translateX(-100%)";
+  };
+
+  const showButton = (target) => {
+    activeMediaUrl = target.url;
+    activeAnchorElement = target.element;
+    positionButtonNearElement(target.element);
     button.style.display = "inline-flex";
   };
 
   const hideButton = () => {
     activeMediaUrl = null;
+    activeAnchorElement = null;
     button.style.display = "none";
   };
 
@@ -134,9 +156,7 @@
   });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type !== "DOWNLOAD_FROM_POPUP") {
-      return;
-    }
+    if (message?.type !== "DOWNLOAD_FROM_POPUP") return;
 
     const preferred = activeMediaUrl || guessMainImage();
     requestDownload(preferred).then(sendResponse);
@@ -149,17 +169,23 @@
     "pointermove",
     (event) => {
       const path = event.composedPath?.() || [event.target];
-      const mediaUrl = findMediaUrlFromPath(path);
+      const media = findMediaFromPath(path);
 
-      if (!mediaUrl) {
+      if (!media) {
         if (event.target !== button) hideButton();
         return;
       }
 
-      showButton(event.clientX, event.clientY, mediaUrl);
+      showButton(media);
     },
     true
   );
+
+  window.addEventListener("scroll", () => {
+    if (activeAnchorElement && button.style.display !== "none") {
+      positionButtonNearElement(activeAnchorElement);
+    }
+  });
 
   document.addEventListener(
     "pointerleave",
