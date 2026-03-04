@@ -8,6 +8,21 @@ const setStatus = (message, isError = false) => {
 
 const isAliExpressUrl = (url = "") => /https:\/\/[\w.-]*aliexpress\.com\//i.test(url);
 
+const getActiveTab = async () => {
+  if (!chrome?.tabs?.query) {
+    throw new Error("API chrome.tabs indisponível. Reinstale a extensão e tente novamente.");
+  }
+
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = Array.isArray(tabs) ? tabs[0] : null;
+
+  if (!tab?.id) {
+    throw new Error("Aba ativa não encontrada.");
+  }
+
+  return tab;
+};
+
 const sendDownloadMessage = async (tabId) => {
   return chrome.tabs.sendMessage(tabId, { type: "DOWNLOAD_FROM_POPUP" });
 };
@@ -29,11 +44,7 @@ button.addEventListener("click", async () => {
   setStatus("Procurando imagem na aba atual...");
 
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-    if (!tab?.id) {
-      throw new Error("Aba ativa não encontrada.");
-    }
+    const tab = await getActiveTab();
 
     if (!isAliExpressUrl(tab.url)) {
       throw new Error("Abra uma página de produto do AliExpress para baixar a foto.");
