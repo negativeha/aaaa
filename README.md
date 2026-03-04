@@ -12,8 +12,8 @@ Extensão em **Manifest V3** para baixar imagens de produtos do AliExpress.
 ## Como usar
 
 1. Entre em uma página de produto do AliExpress.
-2. Passe o mouse (ou clique) em cima da foto do produto.
-3. O botão **Baixar foto** vai aparecer no canto superior direito da imagem.
+2. Passe o mouse em cima da foto do produto (funciona para `<img>` e também alguns blocos com imagem de fundo).
+3. O botão **Baixar foto** vai aparecer próximo ao cursor.
 4. Clique no botão e escolha onde salvar o arquivo.
 
 ## Solução de problemas

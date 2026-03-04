@@ -1,6 +1,7 @@
 (() => {
   const MIN_SIZE = 80;
-  let activeImage = null;
+  const URL_PATTERN = /(alicdn\.com|aliexpress\.)/i;
+  let activeMediaUrl = null;
 
   const sanitizeFileName = (name) =>
     name
@@ -9,7 +10,7 @@
       .trim()
       .slice(0, 80) || "aliexpress-photo";
 
-  const getDownloadableUrl = (url) => {
+  const normalizeUrl = (url) => {
     if (!url) return null;
     return url.split("?")[0];
   };
@@ -23,6 +24,37 @@
     return heading?.textContent?.trim() || "aliexpress-photo";
   };
 
+  const parseBackgroundImageUrl = (value) => {
+    if (!value || value === "none") return null;
+    const match = value.match(/url\((['"]?)(.*?)\1\)/i);
+    return match?.[2] || null;
+  };
+
+  const isLargeEnough = (element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.width >= MIN_SIZE && rect.height >= MIN_SIZE;
+  };
+
+  const findMediaUrlFromPath = (path) => {
+    for (const node of path) {
+      if (!(node instanceof Element)) continue;
+
+      if (node instanceof HTMLImageElement) {
+        const source = normalizeUrl(node.currentSrc || node.src);
+        if (source && URL_PATTERN.test(source) && isLargeEnough(node)) {
+          return source;
+        }
+      }
+
+      const bgUrl = normalizeUrl(parseBackgroundImageUrl(getComputedStyle(node).backgroundImage));
+      if (bgUrl && URL_PATTERN.test(bgUrl) && isLargeEnough(node)) {
+        return bgUrl;
+      }
+    }
+
+    return null;
+  };
+
   const button = document.createElement("button");
   button.type = "button";
   button.className = "aepd-floating-download-button";
@@ -30,59 +62,31 @@
   button.title = "Baixar imagem selecionada";
   button.style.display = "none";
 
-  const positionButton = (img) => {
-    if (!img || !img.isConnected) {
-      button.style.display = "none";
-      activeImage = null;
-      return;
-    }
-
-    const rect = img.getBoundingClientRect();
-    if (rect.width < MIN_SIZE || rect.height < MIN_SIZE) {
-      button.style.display = "none";
-      return;
-    }
-
-    const top = Math.max(8, rect.top + 8);
-    const left = Math.max(8, rect.right - button.offsetWidth - 8);
-
-    button.style.top = `${top + window.scrollY}px`;
-    button.style.left = `${left + window.scrollX}px`;
+  const showButton = (clientX, clientY, mediaUrl) => {
+    activeMediaUrl = mediaUrl;
+    button.style.left = `${Math.max(8, clientX + 12)}px`;
+    button.style.top = `${Math.max(8, clientY + 12)}px`;
     button.style.display = "inline-flex";
-    activeImage = img;
   };
 
-  const isAliExpressImage = (img) => {
-    const source = img.currentSrc || img.src || "";
-    return /alicdn\.com|aliexpress\./i.test(source);
-  };
-
-  const maybeActivateForTarget = (target) => {
-    const img = target?.closest?.("img");
-    if (!img) return;
-    if (!isAliExpressImage(img)) return;
-    if (!img.src && !img.currentSrc) return;
-
-    positionButton(img);
+  const hideButton = () => {
+    activeMediaUrl = null;
+    button.style.display = "none";
   };
 
   button.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
 
-    if (!activeImage) return;
+    if (!activeMediaUrl) return;
 
-    const rawUrl = activeImage.currentSrc || activeImage.src;
-    const url = getDownloadableUrl(rawUrl);
-    if (!url) return;
-
-    const extension = url.split(".").pop()?.split("#")[0] || "jpg";
+    const extension = activeMediaUrl.split(".").pop()?.split("#")[0] || "jpg";
     const filename = `${sanitizeFileName(getProductName())}-${Date.now()}.${extension}`;
 
     try {
       const response = await chrome.runtime.sendMessage({
         type: "DOWNLOAD_IMAGE",
-        payload: { url, filename },
+        payload: { url: activeMediaUrl, filename },
       });
 
       if (!response?.ok) {
@@ -98,27 +102,23 @@
   document.addEventListener(
     "pointermove",
     (event) => {
-      maybeActivateForTarget(event.target);
+      const path = event.composedPath?.() || [event.target];
+      const mediaUrl = findMediaUrlFromPath(path);
+
+      if (!mediaUrl) {
+        if (event.target !== button) hideButton();
+        return;
+      }
+
+      showButton(event.clientX, event.clientY, mediaUrl);
     },
     true
   );
 
   document.addEventListener(
-    "scroll",
+    "pointerleave",
     () => {
-      if (activeImage) positionButton(activeImage);
-    },
-    true
-  );
-
-  window.addEventListener("resize", () => {
-    if (activeImage) positionButton(activeImage);
-  });
-
-  document.addEventListener(
-    "click",
-    (event) => {
-      maybeActivateForTarget(event.target);
+      hideButton();
     },
     true
   );
