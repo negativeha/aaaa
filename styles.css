@@ -1,0 +1,19 @@
+.aepd-floating-download-button {
+  position: fixed;
+  z-index: 2147483647;
+  border: none;
+  border-radius: 999px;
+  background: #ff4747;
+  color: #ffffff;
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 8px 12px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.aepd-floating-download-button:hover {
+  background: #e23939;
+}
