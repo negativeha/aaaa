@@ -35,24 +35,71 @@
     return rect.width >= MIN_SIZE && rect.height >= MIN_SIZE;
   };
 
+  const isDownloadable = (url) => {
+    if (!url) return false;
+    return URL_PATTERN.test(url);
+  };
+
   const findMediaUrlFromPath = (path) => {
     for (const node of path) {
       if (!(node instanceof Element)) continue;
 
       if (node instanceof HTMLImageElement) {
         const source = normalizeUrl(node.currentSrc || node.src);
-        if (source && URL_PATTERN.test(source) && isLargeEnough(node)) {
+        if (source && isDownloadable(source) && isLargeEnough(node)) {
           return source;
         }
       }
 
       const bgUrl = normalizeUrl(parseBackgroundImageUrl(getComputedStyle(node).backgroundImage));
-      if (bgUrl && URL_PATTERN.test(bgUrl) && isLargeEnough(node)) {
+      if (bgUrl && isDownloadable(bgUrl) && isLargeEnough(node)) {
         return bgUrl;
       }
     }
 
     return null;
+  };
+
+  const guessMainImage = () => {
+    const candidates = [];
+
+    document.querySelectorAll("img").forEach((img) => {
+      const source = normalizeUrl(img.currentSrc || img.src);
+      if (!isDownloadable(source)) return;
+      const rect = img.getBoundingClientRect();
+      const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+      candidates.push({ url: source, score: area });
+    });
+
+    document.querySelectorAll("*").forEach((el) => {
+      const bgUrl = normalizeUrl(parseBackgroundImageUrl(getComputedStyle(el).backgroundImage));
+      if (!isDownloadable(bgUrl)) return;
+      const rect = el.getBoundingClientRect();
+      const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+      if (area < MIN_SIZE * MIN_SIZE) return;
+      candidates.push({ url: bgUrl, score: area });
+    });
+
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0]?.url || null;
+  };
+
+  const requestDownload = async (url) => {
+    if (!url) return { ok: false, error: "Nenhuma URL encontrada" };
+
+    const extension = url.split(".").pop()?.split("#")[0] || "jpg";
+    const filename = `${sanitizeFileName(getProductName())}-${Date.now()}.${extension}`;
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "DOWNLOAD_IMAGE",
+        payload: { url, filename },
+      });
+
+      return response?.ok ? { ok: true } : { ok: false, error: response?.error || "Erro desconhecido" };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
   };
 
   const button = document.createElement("button");
@@ -80,21 +127,20 @@
 
     if (!activeMediaUrl) return;
 
-    const extension = activeMediaUrl.split(".").pop()?.split("#")[0] || "jpg";
-    const filename = `${sanitizeFileName(getProductName())}-${Date.now()}.${extension}`;
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: "DOWNLOAD_IMAGE",
-        payload: { url: activeMediaUrl, filename },
-      });
-
-      if (!response?.ok) {
-        console.error("Falha no download:", response?.error || "Erro desconhecido");
-      }
-    } catch (error) {
-      console.error("Falha ao baixar imagem:", error);
+    const result = await requestDownload(activeMediaUrl);
+    if (!result.ok) {
+      console.error("Falha ao baixar imagem:", result.error);
     }
+  });
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type !== "DOWNLOAD_FROM_POPUP") {
+      return;
+    }
+
+    const preferred = activeMediaUrl || guessMainImage();
+    requestDownload(preferred).then(sendResponse);
+    return true;
   });
 
   document.documentElement.appendChild(button);

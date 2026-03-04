@@ -11,14 +11,23 @@ Extensão em **Manifest V3** para baixar imagens de produtos do AliExpress.
 
 ## Como usar
 
+### Opção 1: botão flutuante na página
+
 1. Entre em uma página de produto do AliExpress.
 2. Passe o mouse em cima da foto do produto (funciona para `<img>` e também alguns blocos com imagem de fundo).
 3. O botão **Baixar foto** vai aparecer próximo ao cursor.
 4. Clique no botão e escolha onde salvar o arquivo.
 
+### Opção 2: popup da extensão (novo)
+
+1. Na página do produto, clique no ícone da extensão na barra do Chrome.
+2. Clique em **Baixar foto principal**.
+3. A extensão procura a maior imagem da página e inicia o download.
+
 ## Solução de problemas
 
-- Se o botão não aparecer, recarregue a página após instalar a extensão.
+- Se o botão não aparecer, use a opção pelo **popup da extensão**.
+- Recarregue a página após instalar/atualizar a extensão.
 - Confirme se a extensão está ativada em `chrome://extensions`.
 - Alguns layouts do AliExpress mudam com frequência; se uma página específica falhar, teste em outra página de produto.
 
