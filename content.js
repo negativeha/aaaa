@@ -1,7 +1,15 @@
 (() => {
   const MIN_SIZE = 120;
+  const MIN_SIZE_KNOWN_SELECTOR = 60;
   const URL_PATTERN = /(alicdn\.com|aliexpress\.)/i;
   const BLOCKED_HINTS = /(cart|carrinho|logo|icon|avatar|store|ship|frete|payment|footer|header)/i;
+  const PRODUCT_IMAGE_SELECTORS = [
+    ".image-view-v2--previewWrap img",
+    ".image-view-v2--previewBox img",
+    ".magnifier--wrap img",
+    ".pdp-info-left img",
+    "div.pdp-info-left img",
+  ];
 
   let activeMediaUrl = null;
 
@@ -34,6 +42,7 @@
       img.src,
       img.getAttribute("data-src"),
       img.getAttribute("data-zoom-image"),
+      img.getAttribute("data-srcset")?.split(",")?.[0]?.trim()?.split(" ")?.[0],
     ];
 
     for (const candidate of candidates) {
@@ -46,11 +55,12 @@
     return null;
   };
 
-  const isLargeEnough = (rect) => rect.width >= MIN_SIZE && rect.height >= MIN_SIZE;
+  const isLargeEnough = (rect, minSize = MIN_SIZE) => rect.width >= minSize && rect.height >= minSize;
 
-  const isLikelyProductImage = (img) => {
+  const isLikelyProductImage = (img, options = {}) => {
     const rect = img.getBoundingClientRect();
-    if (!isLargeEnough(rect)) return false;
+    const minSize = options.allowKnownSmall ? MIN_SIZE_KNOWN_SELECTOR : MIN_SIZE;
+    if (!isLargeEnough(rect, minSize)) return false;
 
     const hint = `${img.alt || ""} ${img.className || ""} ${img.id || ""}`;
     if (BLOCKED_HINTS.test(hint)) return false;
@@ -59,6 +69,17 @@
     if (!src) return false;
 
     return true;
+  };
+
+  const findKnownProductImage = () => {
+    for (const selector of PRODUCT_IMAGE_SELECTORS) {
+      const element = document.querySelector(selector);
+      if (element instanceof HTMLImageElement && isLikelyProductImage(element, { allowKnownSmall: true })) {
+        return element;
+      }
+    }
+
+    return null;
   };
 
   const placeButtonNearImage = (button, rect) => {
@@ -72,20 +93,25 @@
     for (const node of path) {
       if (!(node instanceof Element)) continue;
 
-      if (node instanceof HTMLImageElement && isLikelyProductImage(node)) {
+      if (node instanceof HTMLImageElement && isLikelyProductImage(node, { allowKnownSmall: true })) {
         return node;
       }
 
       const nested = node.querySelector?.("img");
-      if (nested instanceof HTMLImageElement && isLikelyProductImage(nested)) {
+      if (nested instanceof HTMLImageElement && isLikelyProductImage(nested, { allowKnownSmall: true })) {
         return nested;
       }
     }
 
-    return null;
+    return findKnownProductImage();
   };
 
   const guessMainProductImage = () => {
+    const knownImage = findKnownProductImage();
+    if (knownImage) {
+      return getImageUrl(knownImage);
+    }
+
     const images = Array.from(document.querySelectorAll("img"));
 
     const candidates = images
@@ -95,8 +121,8 @@
         const rect = img.getBoundingClientRect();
         const area = Math.max(0, rect.width) * Math.max(0, rect.height);
         const centerPenalty = Math.abs(rect.left + rect.width / 2 - window.innerWidth / 2);
-        const galleryBoost = /(gallery|swiper|thumb|image-view|sku|magnifier|pdp-main-image)/i.test(
-          `${img.className} ${img.closest('[class*="gallery"], [class*="image"], [class*="sku"]')?.className || ""}`
+        const galleryBoost = /(gallery|swiper|thumb|image-view|sku|magnifier|pdp-main-image|preview)/i.test(
+          `${img.className} ${img.closest('[class*="gallery"], [class*="image"], [class*="sku"], [class*="preview"]')?.className || ""}`
         )
           ? 50000
           : 0;
@@ -153,7 +179,11 @@
     event.preventDefault();
     event.stopPropagation();
 
-    if (!activeMediaUrl) return;
+    if (!activeMediaUrl) {
+      const fallback = guessMainProductImage();
+      if (!fallback) return;
+      activeMediaUrl = fallback;
+    }
 
     const result = await requestDownload(activeMediaUrl);
     if (!result.ok) {

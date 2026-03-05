@@ -29,6 +29,7 @@ Extensão em **Manifest V3** para baixar imagens de produtos do AliExpress.
 - Se o botão não aparecer, use a opção pelo **popup da extensão** (agora ele tenta preparar a aba automaticamente).
 - Recarregue a página após instalar/atualizar a extensão.
 - Confirme se a extensão está ativada em `chrome://extensions`.
+- A extensão prioriza a imagem principal da galeria (`image-view-v2`/`magnifier`) e evita ícones/backgrounds.
 - Alguns layouts do AliExpress mudam com frequência; se uma página específica falhar, teste em outra página de produto.
 
 ## Observações
