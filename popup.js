@@ -8,6 +8,14 @@ const setStatus = (message, isError = false) => {
 
 const isAliExpressUrl = (url = "") => /https:\/\/[\w.-]*aliexpress\.com\//i.test(url);
 
+const normalizeTabId = (tabId) => {
+  const parsed = Number(tabId);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error("Não consegui identificar a aba ativa para injetar o script.");
+  }
+  return parsed;
+};
+
 const getActiveTab = async () => {
   if (!chrome?.tabs?.query) {
     throw new Error("API chrome.tabs indisponível. Reinstale a extensão e tente novamente.");
@@ -16,11 +24,11 @@ const getActiveTab = async () => {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const tab = Array.isArray(tabs) ? tabs[0] : null;
 
-  if (!tab?.id) {
+  if (tab?.id === undefined || tab?.id === null) {
     throw new Error("Aba ativa não encontrada.");
   }
 
-  return tab;
+  return { ...tab, id: normalizeTabId(tab.id) };
 };
 
 const sendDownloadMessage = async (tabId) => {
@@ -28,13 +36,19 @@ const sendDownloadMessage = async (tabId) => {
 };
 
 const ensureContentScriptReady = async (tabId) => {
+  if (!chrome?.scripting?.insertCSS || !chrome?.scripting?.executeScript) {
+    throw new Error("Permissão/API de scripting indisponível para preparar a aba.");
+  }
+
+  const safeTabId = normalizeTabId(tabId);
+
   await chrome.scripting.insertCSS({
-    target: { tabId },
+    target: { tabId: safeTabId },
     files: ["styles.css"],
   });
 
   await chrome.scripting.executeScript({
-    target: { tabId },
+    target: { tabId: safeTabId },
     files: ["content.js"],
   });
 };
