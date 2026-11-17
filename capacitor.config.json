@@ -1,0 +1,8 @@
+{
+  "appId": "br.com.solucoesbike.os",
+  "appName": "Soluções Bike OS",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

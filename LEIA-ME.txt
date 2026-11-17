@@ -1,0 +1,9 @@
+SOLUCOES BIKE OS - COMPILACAO NO GITHUB
+
+1. Crie um repositorio PRIVADO no github.com (nome sugerido: solucoes-bike-os).
+2. Envie para a RAIZ do repositorio os arquivos package.json, capacitor.config.json, a pasta www e a pasta .github deste ZIP. Importante: nao coloque tudo dentro de uma pasta extra.
+3. Abra a aba Actions do repositorio.
+4. Abra 'Gerar APK Solucoes Bike' e toque em Run workflow, ou aguarde a execucao automatica ao enviar arquivos na branch main.
+5. Ao concluir, abra a execucao e baixe o artifact 'Solucoes-Bike-OS-APK'. Extraia o ZIP baixado e instale app-debug.apk no Android.
+
+ATENCAO: APK de DEBUG para testes, nao e release assinado para distribuicao. Nunca desinstale um app com dados importantes sem exportar o backup. O armazenamento local e o compartilhamento devem ser testados no Android.
